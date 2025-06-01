@@ -1,4 +1,4 @@
-# kila_call.py - updated for Pinecone v3
+# kila_call.py
 # Production FastAPI app for handling voice calls via Twilio + OpenAI + ElevenLabs
 # Uses same Pinecone memory as Instagram DMs for consistent conversation
 
@@ -22,7 +22,7 @@ from twilio.twiml.voice_response import VoiceResponse, Gather, Play
 from twilio.rest import Client
 import uvicorn
 from openai import OpenAI
-from pinecone import Pinecone, PineconeApiException
+from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
 
 # Load environment variables from .env file
@@ -32,6 +32,7 @@ load_dotenv()
 # CONFIGURATION
 # ========================
 
+# Load environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
@@ -40,22 +41,35 @@ TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "agently-memory")
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8001")
-PORT = int(os.getenv("PORT", 8001))
 
-ELEVENLABS_VOICE_ID = "XrExE9yKIg1WjnnlVkGX"
-ELEVENLABS_MODEL = "eleven_turbo_v2_5"
+# Production configuration
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8001")  # Will be set to Render URL in production
+PORT = int(os.getenv("PORT", 8001))  # Render assigns this automatically
 
+# ElevenLabs Configuration
+ELEVENLABS_VOICE_ID = "XrExE9yKIg1WjnnlVkGX"  # Your chosen voice
+ELEVENLABS_MODEL = "eleven_turbo_v2_5"  # Fastest model for low latency
+
+# Validate required environment variables
 required_vars = [OPENAI_API_KEY, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, PINECONE_API_KEY, ELEVENLABS_API_KEY]
 if not all(required_vars):
     raise RuntimeError("Missing required environment variables")
 
-# ✅ Initialize clients using Pinecone v3
+# Initialize clients
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-pc = Pinecone(api_key=PINECONE_API_KEY)
-pinecone_index = pc.Index(PINECONE_INDEX_NAME)
+
+# Initialize Pinecone (v5 compatible)
+try:
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    pinecone_index = pc.Index(PINECONE_INDEX_NAME)
+    print(f"[INIT] Pinecone v5 initialized successfully with index: {PINECONE_INDEX_NAME}")
+except Exception as e:
+    print(f"[ERROR] Failed to initialize Pinecone: {str(e)}")
+    raise
+
 EMBEDDINGS = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
+
 # Voice personality prompt (60% professional, 30% warm, 10% witty)
 VOICE_SYSTEM_PROMPT = """
 You are KILA, a world-class personal assistant with a sharp, professional voice. Your personality is:
@@ -174,30 +188,33 @@ def cleanup_old_audio_files():
         print(f"[CLEANUP] Error cleaning up files: {str(e)}")
 
 # ========================
-# MEMORY FUNCTIONS (Same as Instagram DMs)
+# MEMORY FUNCTIONS (Pinecone v5 Compatible)
 # ========================
 
 def fetch_memory(phone_number: str) -> str:
-    """Fetch conversation memory for a phone number from Pinecone."""
+    """Fetch conversation memory for a phone number from Pinecone v5."""
     try:
         print(f"[MEMORY] Fetching memory for phone: {phone_number}")
         resp = pinecone_index.fetch(ids=[phone_number], namespace="kila_voice")
         
-        vectors = getattr(resp, 'vectors', {})
-        if phone_number in vectors:
-            metadata = getattr(vectors[phone_number], 'metadata', {})
-            summary = metadata.get('summary', '')
-            print(f"[MEMORY] Found memory for {phone_number}")
-            return summary
-        else:
-            print(f"[MEMORY] No memory found for {phone_number}")
-            return ""
+        # Pinecone v5 compatible response handling
+        if hasattr(resp, 'vectors') and resp.vectors:
+            vectors = resp.vectors
+            if phone_number in vectors:
+                vector_data = vectors[phone_number]
+                if hasattr(vector_data, 'metadata') and vector_data.metadata:
+                    summary = vector_data.metadata.get('summary', '')
+                    print(f"[MEMORY] Found memory for {phone_number}")
+                    return summary
+        
+        print(f"[MEMORY] No memory found for {phone_number}")
+        return ""
     except Exception as e:
         print(f"[ERROR] Memory fetch error: {str(e)}")
         return ""
 
 def store_memory(phone_number: str, summary: str, interaction_type: str = "voice_call"):
-    """Store conversation memory for a phone number in Pinecone."""
+    """Store conversation memory for a phone number in Pinecone v5."""
     try:
         print(f"[MEMORY] Storing memory for phone: {phone_number}")
         
@@ -210,6 +227,7 @@ def store_memory(phone_number: str, summary: str, interaction_type: str = "voice
             "phone_number": phone_number
         }
         
+        # Pinecone v5 compatible upsert
         pinecone_index.upsert(
             vectors=[{
                 "id": phone_number,
@@ -231,9 +249,10 @@ async def root():
     """Health check endpoint."""
     return {
         "status": "alive", 
-        "service": "KILA Voice Call API - Production",
+        "service": "KILA Voice Call API - Production v5",
         "base_url": BASE_URL,
-        "environment": "production" if "render.com" in BASE_URL else "development"
+        "environment": "production" if "render.com" in BASE_URL else "development",
+        "pinecone_version": "v5"
     }
 
 @app.get("/health")
@@ -247,7 +266,8 @@ async def health_check():
             "elevenlabs": "connected" if ELEVENLABS_API_KEY else "missing_key",
             "twilio": "connected" if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN else "missing_keys",
             "pinecone": "connected" if PINECONE_API_KEY else "missing_key"
-        }
+        },
+        "pinecone_version": "v5"
     }
 
 @app.post("/call/incoming")
