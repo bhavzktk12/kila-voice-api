@@ -1,4 +1,4 @@
-# kila_call.py
+# kila_call.py - updated for Pinecone v3
 # Production FastAPI app for handling voice calls via Twilio + OpenAI + ElevenLabs
 # Uses same Pinecone memory as Instagram DMs for consistent conversation
 
@@ -22,7 +22,7 @@ from twilio.twiml.voice_response import VoiceResponse, Gather, Play
 from twilio.rest import Client
 import uvicorn
 from openai import OpenAI
-from pinecone import Pinecone
+from pinecone import Pinecone  # ✅ Pinecone v3
 from langchain_openai import OpenAIEmbeddings
 
 # Load environment variables from .env file
@@ -32,7 +32,6 @@ load_dotenv()
 # CONFIGURATION
 # ========================
 
-# Load environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY") 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
@@ -41,27 +40,22 @@ TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "agently-memory")
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8001")
+PORT = int(os.getenv("PORT", 8001))
 
-# Production configuration
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8001")  # Will be set to Render URL in production
-PORT = int(os.getenv("PORT", 8001))  # Render assigns this automatically
+ELEVENLABS_VOICE_ID = "XrExE9yKIg1WjnnlVkGX"
+ELEVENLABS_MODEL = "eleven_turbo_v2_5"
 
-# ElevenLabs Configuration
-ELEVENLABS_VOICE_ID = "XrExE9yKIg1WjnnlVkGX"  # Your chosen voice
-ELEVENLABS_MODEL = "eleven_turbo_v2_5"  # Fastest model for low latency
-
-# Validate required environment variables
 required_vars = [OPENAI_API_KEY, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, PINECONE_API_KEY, ELEVENLABS_API_KEY]
 if not all(required_vars):
     raise RuntimeError("Missing required environment variables")
 
-# Initialize clients
+# ✅ Initialize clients using Pinecone v3
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 pc = Pinecone(api_key=PINECONE_API_KEY)
 pinecone_index = pc.Index(PINECONE_INDEX_NAME)
 EMBEDDINGS = OpenAIEmbeddings(api_key=OPENAI_API_KEY)
-
 # Voice personality prompt (60% professional, 30% warm, 10% witty)
 VOICE_SYSTEM_PROMPT = """
 You are KILA, a world-class personal assistant with a sharp, professional voice. Your personality is:
