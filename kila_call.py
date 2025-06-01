@@ -22,7 +22,7 @@ from twilio.twiml.voice_response import VoiceResponse, Gather, Play
 from twilio.rest import Client
 import uvicorn
 from openai import OpenAI
-from pinecone import Pinecone  # ✅ Pinecone v3
+from pinecone import Pinecone, PineconeApiException
 from langchain_openai import OpenAIEmbeddings
 
 # Load environment variables from .env file
